@@ -5,6 +5,9 @@ try:
   import usocket as socket
 except:
   import socket
+from ota_updater import OTAUpdater
+import gc
+
 
 led = machine.Pin(2, machine.Pin.OUT)
 
@@ -13,9 +16,6 @@ if wlan is None:
     print("Could not initialize the network connection.")
     while True:
         pass  # you shall not pass :D
-
-# Main Code goes here, wlan is a working network.WLAN(STA_IF) instance.
-print("ESP OK")
 
 def web_page():
   if led.value() == 1:
@@ -31,40 +31,59 @@ def web_page():
   <p>GPIO state: <strong>""" + gpio_state + """</strong></p><p><a href="/?led=on"><button class="button">ON</button></a></p>
   <p><a href="/?led=off"><button class="button button2">OFF</button></a></p></body></html>"""
   return html
-  
-try:
-  s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-  s.bind(('', 80))
-  s.listen(5)
-except OSError as e:
-  machine.reset()
 
-while True:
-  try:
-    if gc.mem_free() < 102000:
-      gc.collect()
-    conn, addr = s.accept()
-    conn.settimeout(3.0)
-    print('Got a connection from %s' % str(addr))
-    request = conn.recv(1024)
-    conn.settimeout(None)
-    request = str(request)
-    print('Content = %s' % request)
-    led_on = request.find('/?led=on')
-    led_off = request.find('/?led=off')
-    if led_on == 6:
-      print('LED ON')
-      led.value(1)
-    if led_off == 6:
-      print('LED OFF')
-      led.value(0)
-    response = web_page()
-    conn.send('HTTP/1.1 200 OK\n')
-    conn.send('Content-Type: text/html\n')
-    conn.send('Connection: close\n\n')
-    conn.sendall(response)
-    conn.close()
-  except OSError as e:
-    conn.close()
-    print('Connection closed')
+def download_and_install_update_if_available():
+    o = OTAUpdater('https://github.com/breno174/micropython-ang')
+    o.install_update_if_available()
+    del(o)
+
+
+def start():
+    # Main Code goes here, wlan is a working network.WLAN(STA_IF) instance.
+    print("ESP OK")
+
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(('', 80))
+        s.listen(5)
+    except OSError as e:
+        machine.reset()
+
+    while True:
+        try:
+            if gc.mem_free() < 102000:
+                gc.collect()
+            conn, addr = s.accept()
+            conn.settimeout(3.0)
+            print('Got a connection from %s' % str(addr))
+            request = conn.recv(1024)
+            conn.settimeout(None)
+            request = str(request)
+            print('Content = %s' % request)
+            led_on = request.find('/?led=on')
+            led_off = request.find('/?led=off')
+            if led_on == 6:
+                print('LED ON')
+            led.value(1)
+            if led_off == 6:
+                print('LED OFF')
+            led.value(0)
+            response = web_page()
+            conn.send('HTTP/1.1 200 OK\n')
+            conn.send('Content-Type: text/html\n')
+            conn.send('Connection: close\n\n')
+            conn.sendall(response)
+            conn.close()
+        except:
+            conn.close()
+            print('Connection closed')
+          
+
+
+def boot():
+    download_and_install_update_if_available()
+    machine.reset()
+    start()
+
+boot()
